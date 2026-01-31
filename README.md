@@ -4,11 +4,15 @@ Sistema completo per la gestione e il calcolo dei risultati del Fantacalcio con 
 
 ## 🚀 Caratteristiche
 
-- **Gestione Giornate**: Crea e organizza le giornate di campionato
-- **Gestione Partite**: Inserisci le partite con squadra casa e trasferta
+- **Gestione Giornate**: Crea e organizza le giornate di campionato con reset automatico campi
+- **Gestione Partite**: Inserisci le partite con squadra casa e trasferta, feedback immediato
 - **Formazioni**: Inserisci le formazioni complete (11 titolari) con ruoli P, D, C, A
+  - ✨ **NUOVO**: Import via copia/incolla da siti web!
+  - ✨ **NUOVO**: Supporto formati multipli con deduzione automatica
 - **Voti Manuali**: Inserisci voti base e bonus/malus manualmente per ogni giocatore
 - **Import Excel**: Carica file Excel ufficiali con calcolo automatico dei bonus/malus
+  - ✨ **NUOVO**: Riconoscimento intelligente nomi colonne
+  - ✨ **NUOVO**: Messaggi errore migliorati
 - **Calcolo Risultati**: Motore di calcolo completo secondo il regolamento specificato
 - **Database SQLite**: Persistenza completa di tutti i dati
 
@@ -58,10 +62,22 @@ fantacalcio/
 - Clicca "Crea Partita"
 
 ### 3. Inserisci le Formazioni
+
 - Vai in "Inserimento Formazioni"
 - Seleziona giornata e partita
-- Per ogni squadra, inserisci gli 11 titolari con ruolo (P, D, C, A)
-- Salva la formazione
+- Scegli il metodo di inserimento:
+  
+  **Opzione A: Copia/Incolla (Nuovo! ⚡)**
+  - Seleziona "📋 Copia/Incolla"
+  - Incolla la formazione dal tuo sito preferito
+  - Formati supportati: `P Nome`, `Nome (P)`, `Portiere: Nome`, solo nomi
+  - Clicca "Elabora e Inserisci"
+  - Verifica l'anteprima e conferma
+  - Vedi `GUIDA_COPIA_INCOLLA.md` per esempi dettagliati
+  
+  **Opzione B: Manuale**
+  - Per ogni squadra, inserisci 11 giocatori con ruoli (P, D, C, A)
+  - Clicca "✅ Salva Formazione"
 
 ### 4. Inserisci i Voti
 

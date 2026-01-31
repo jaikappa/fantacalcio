@@ -70,14 +70,49 @@ def leggi_excel_voti(filepath: str) -> pd.DataFrame:
     # Leggi il file Excel
     df = pd.read_excel(filepath)
     
-    # Normalizza i nomi delle colonne (rimuovi spazi, converti in minuscolo)
-    df.columns = df.columns.str.strip().str.lower()
+    # Normalizza i nomi delle colonne (rimuovi spazi, converti in minuscolo, rimuovi caratteri speciali)
+    df.columns = df.columns.str.strip().str.lower().str.replace('[^a-z0-9]', '', regex=True)
     
-    # Colonne richieste
+    # Mapping flessibile dei nomi delle colonne
+    col_mapping = {
+        'ruolo': ['ruolo', 'r', 'role', 'pos', 'posizione'],
+        'nome': ['nome', 'name', 'giocatore', 'player', 'cognome'],
+        'voto': ['voto', 'v', 'vote', 'mv', 'votomv'],
+        'gf': ['gf', 'golfatti', 'gol', 'goals'],
+        'gs': ['gs', 'golsubiti', 'golsub'],
+        'rp': ['rp', 'rigoriparati', 'rigpar'],
+        'rf': ['rf', 'rigorifatti', 'rigfatti'],
+        'rs': ['rs', 'rigorisbagliati', 'rigsbag'],
+        'au': ['au', 'autogol', 'ag'],
+        'amm': ['amm', 'ammonizioni', 'gialli', 'yellow'],
+        'esp': ['esp', 'espulsioni', 'rossi', 'red'],
+        'ass': ['ass', 'assist', 'assistenze']
+    }
+    
+    # Trova le colonne corrette
+    found_cols = {}
+    for std_name, variants in col_mapping.items():
+        for variant in variants:
+            if variant in df.columns:
+                found_cols[std_name] = variant
+                break
+    
+    # Rinomina le colonne trovate
+    rename_dict = {v: k for k, v in found_cols.items()}
+    df = df.rename(columns=rename_dict)
+    
+    # Verifica colonne obbligatorie
     required_cols = ['ruolo', 'nome', 'voto']
-    for col in required_cols:
-        if col not in df.columns:
-            raise ValueError(f"Colonna obbligatoria '{col}' non trovata nel file Excel")
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        # Messaggio di errore più dettagliato
+        available_cols = list(df.columns)
+        raise ValueError(
+            f"Colonne obbligatorie mancanti: {', '.join(missing_cols)}.\n"
+            f"Colonne trovate nel file: {', '.join(available_cols)}.\n"
+            f"Assicurati che il file Excel contenga le colonne: Ruolo, Nome, Voto"
+        )
     
     # Colonne opzionali (se non presenti, usa 0)
     optional_cols = {

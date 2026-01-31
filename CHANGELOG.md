@@ -5,6 +5,71 @@ Tutte le modifiche importanti a questo progetto saranno documentate in questo fi
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2025-01-31
+
+### ✨ Aggiunto
+
+#### UX Improvements
+- **Feedback migliorato**: Messaggi di successo più evidenti con popup temporaneo
+- **Reset automatico campi**: Form si svuotano automaticamente dopo la creazione
+- **Import formazione via copia/incolla**: Supporto per incollare formazioni da siti web
+  - Supporta multipli formati: "P Nome", "Nome (P)", "Portiere: Nome"
+  - **NEW fantageneration**: Riconoscimento automatico formato compatto `(P) Sommer(D) Bastoni...`
+  - Deduzione automatica ruoli se non specificati
+  - Anteprima prima del salvataggio
+  - Filtro automatico header e statistiche
+- **Import Excel più tollerante**: Riconosce variazioni nei nomi delle colonne
+  - Supporta "Ruolo", "R", "Role", "Pos", "Posizione"
+  - Supporta "Nome", "Name", "Giocatore", "Player"
+  - Messaggi di errore più dettagliati con colonne disponibili
+
+### 🔧 Migliorato
+
+#### Gestione Giornate
+- Form con `clear_on_submit=True` per reset automatico
+- Auto-incremento numero giornata suggerito
+- Delay di 1.5s per visualizzare il messaggio di successo
+
+#### Gestione Partite
+- Form con reset automatico dopo creazione
+- Messaggio di conferma più chiaro
+- Delay visivo per feedback
+
+#### Inserimento Formazioni
+- Doppio metodo: Manuale o Copia/Incolla
+- Radio button per scegliere il metodo
+- Parser intelligente per testo incollato
+- Supporto formati multipli:
+  - `P Maignan` (ruolo + nome)
+  - `Maignan (P)` (nome + ruolo)
+  - `Portiere: Maignan` (ruolo esteso)
+  - Deduzione automatica posizioni
+
+#### Import Excel
+- Normalizzazione colonne migliorata
+- Rimozione caratteri speciali
+- Mapping flessibile nomi colonne
+- Errori più descrittivi con lista colonne trovate
+
+### 🐛 Risolto
+
+- **Excel Import Error**: "Colonna obbligatoria 'ruolo' non trovata"
+  - Causa: Nome colonna con maiuscole o caratteri speciali
+  - Soluzione: Normalizzazione e mapping flessibile
+- **Inserimenti multipli**: Possibilità di creare duplicati per errore
+  - Soluzione: Reset automatico campi dopo submit
+- **Mancanza feedback**: Utente non sicuro se azione completata
+  - Soluzione: Messaggi success con delay visivo
+
+### 📊 Statistiche v1.1.0
+
+- **Nuove funzioni**: 1 (parse_formazione_da_testo)
+- **Funzioni modificate**: 4 (render_giornate, render_partite, render_formazione_squadra, leggi_excel_voti)
+- **Bug risolti**: 3
+- **Miglioramenti UX**: 5
+
+---
+
 ## [1.0.0] - 2025-01-31
 
 ### ✨ Aggiunto

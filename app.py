@@ -107,18 +107,46 @@ def render_giornate():
     with tab1:
         st.subheader("Crea una nuova giornata")
         
+        # Usa session state per gestire i valori dei form
+        if 'giornata_numero' not in st.session_state:
+            st.session_state.giornata_numero = 1
+        if 'giornata_descrizione' not in st.session_state:
+            st.session_state.giornata_descrizione = ""
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            numero = st.number_input("Numero giornata", min_value=1, step=1, value=1)
+            numero = st.number_input(
+                "Numero giornata", 
+                min_value=1, 
+                step=1, 
+                value=st.session_state.giornata_numero,
+                key="input_numero_giornata"
+            )
         
         with col2:
-            descrizione = st.text_input("Descrizione (opzionale)", placeholder="Es: Giornata di andata")
+            descrizione = st.text_input(
+                "Descrizione (opzionale)", 
+                placeholder="Es: Giornata di andata",
+                value=st.session_state.giornata_descrizione,
+                key="input_descrizione_giornata"
+            )
         
         if st.button("✅ Crea Giornata", type="primary"):
             try:
                 giornata = db.create_giornata(numero, descrizione)
+                
+                # Mostra messaggio di successo
                 st.success(f"✅ Giornata {numero} creata con successo!")
+                
+                # Reset dei campi
+                st.session_state.giornata_numero = numero + 1  # Incrementa automaticamente
+                st.session_state.giornata_descrizione = ""
+                
+                # Piccolo delay per far vedere il messaggio
+                import time
+                time.sleep(1)
+                
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Errore: {str(e)}")
@@ -173,29 +201,36 @@ def render_partite():
         selected_giornata_id = st.selectbox(
             "Seleziona giornata",
             options=list(giornata_options.keys()),
-            format_func=lambda x: giornata_options[x]
+            format_func=lambda x: giornata_options[x],
+            key="select_giornata_partita"
         )
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            squadra_casa = st.text_input("Squadra di Casa", placeholder="Es: Team A")
-        
-        with col2:
-            squadra_trasferta = st.text_input("Squadra in Trasferta", placeholder="Es: Team B")
-        
-        if st.button("✅ Crea Partita", type="primary"):
-            if not squadra_casa or not squadra_trasferta:
-                st.error("❌ Inserisci entrambe le squadre")
-            elif squadra_casa.strip().lower() == squadra_trasferta.strip().lower():
-                st.error("❌ Le squadre devono essere diverse")
-            else:
-                try:
-                    partita = db.create_partita(selected_giornata_id, squadra_casa, squadra_trasferta)
-                    st.success(f"✅ Partita creata: {squadra_casa} vs {squadra_trasferta}")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Errore: {str(e)}")
+        # Usa form per reset automatico
+        with st.form("form_nuova_partita", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                squadra_casa = st.text_input("Squadra di Casa", placeholder="Es: Team A")
+            
+            with col2:
+                squadra_trasferta = st.text_input("Squadra in Trasferta", placeholder="Es: Team B")
+            
+            submitted = st.form_submit_button("✅ Crea Partita", type="primary", use_container_width=True)
+            
+            if submitted:
+                if not squadra_casa or not squadra_trasferta:
+                    st.error("❌ Inserisci entrambe le squadre")
+                elif squadra_casa.strip().lower() == squadra_trasferta.strip().lower():
+                    st.error("❌ Le squadre devono essere diverse")
+                else:
+                    try:
+                        partita = db.create_partita(selected_giornata_id, squadra_casa, squadra_trasferta)
+                        st.success(f"✅ Partita creata: {squadra_casa} vs {squadra_trasferta}! I campi sono stati resettati.")
+                        import time
+                        time.sleep(1.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Errore: {str(e)}")
     
     with tab2:
         st.subheader("Partite esistenti")
@@ -299,62 +334,235 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
         
         st.divider()
     
-    # Form per inserire nuova formazione
-    st.write("**Inserisci nuova formazione (11 titolari):**")
+    # Metodo di inserimento
+    metodo = st.radio(
+        "Metodo di inserimento",
+        ["📝 Inserimento Manuale", "📋 Copia/Incolla"],
+        key=f"metodo_{tipo_squadra}",
+        horizontal=True
+    )
     
-    ruoli = ['P', 'D', 'C', 'A']
-    
-    with st.form(f"form_{tipo_squadra}"):
-        giocatori = []
+    if metodo == "📋 Copia/Incolla":
+        st.write("**Incolla la formazione:**")
+        st.info("""
+        **Formati supportati:**
+        - `P Nome Cognome` (un giocatore per riga)
+        - `Portiere: Nome Cognome` 
+        - `Nome Cognome (P)`
+        - **NEW fantageneration**: `(P) Sommer(D) Bastoni(C) Pulisic...` (tutto attaccato)
+        - Solo nomi separati da virgola o a capo (rileverà automaticamente i ruoli)
         
-        for i in range(11):
-            col1, col2, col3 = st.columns([1, 2, 3])
-            
-            with col1:
-                st.write(f"**{i+1}**")
-            
-            with col2:
-                ruolo = st.selectbox(
-                    f"Ruolo {i+1}",
-                    options=ruoli,
-                    key=f"ruolo_{tipo_squadra}_{i}",
-                    label_visibility="collapsed"
-                )
-            
-            with col3:
-                nome = st.text_input(
-                    f"Nome {i+1}",
-                    placeholder=f"Nome giocatore {i+1}",
-                    key=f"nome_{tipo_squadra}_{i}",
-                    label_visibility="collapsed"
-                )
-            
-            giocatori.append({'ruolo': ruolo, 'nome': nome, 'posizione': i+1})
+        **Esempio NEW fantageneration:**
+        ```
+        (P) Sommer(D) Bastoni(D) Cambiaso(D) Coco(C) Pulisic(A) David
+        ```
         
-        submitted = st.form_submit_button("✅ Salva Formazione", type="primary")
+        **Esempio standard:**
+        ```
+        P Maignan
+        D Calabria
+        D Tomori
+        C Bennacer
+        A Giroud
+        ```
+        """)
         
-        if submitted:
-            # Verifica che tutti i nomi siano inseriti
-            nomi_validi = [g for g in giocatori if g['nome'].strip()]
+        testo_formazione = st.text_area(
+            "Incolla qui la formazione (11 giocatori)",
+            height=300,
+            placeholder="Incolla qui la lista dei giocatori...",
+            key=f"paste_{tipo_squadra}"
+        )
+        
+        if st.button("🔄 Elabora e Inserisci", type="primary", key=f"parse_{tipo_squadra}"):
+            giocatori_parsed = parse_formazione_da_testo(testo_formazione)
             
-            if len(nomi_validi) != 11:
-                st.error("❌ Inserisci tutti gli 11 giocatori")
+            if giocatori_parsed is None:
+                st.error("❌ Formato non riconosciuto. Usa uno dei formati supportati.")
+            elif len(giocatori_parsed) != 11:
+                st.error(f"❌ Trovati {len(giocatori_parsed)} giocatori, servono esattamente 11.")
             else:
-                # Cancella formazione esistente
-                db.clear_formazione(partita.id, tipo_squadra)
+                # Mostra anteprima
+                st.write("**Anteprima formazione rilevata:**")
+                df_preview = pd.DataFrame(giocatori_parsed)
+                st.dataframe(df_preview, use_container_width=True, hide_index=True)
                 
-                # Inserisci nuova formazione
-                for g in giocatori:
-                    db.add_formazione(
-                        partita.id,
-                        tipo_squadra,
-                        g['nome'].strip(),
-                        g['ruolo'],
-                        g['posizione']
+                if st.button("✅ Conferma e Salva", type="primary", key=f"confirm_{tipo_squadra}"):
+                    # Cancella formazione esistente
+                    db.clear_formazione(partita.id, tipo_squadra)
+                    
+                    # Inserisci nuova formazione
+                    for i, g in enumerate(giocatori_parsed, 1):
+                        db.add_formazione(
+                            partita.id,
+                            tipo_squadra,
+                            g['nome'],
+                            g['ruolo'],
+                            i
+                        )
+                    
+                    st.success(f"✅ Formazione {nome_squadra} salvata!")
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+    
+    else:  # Inserimento manuale
+        st.write("**Inserisci formazione manualmente (11 titolari):**")
+        
+        ruoli = ['P', 'D', 'C', 'A']
+        
+        with st.form(f"form_{tipo_squadra}"):
+            giocatori = []
+            
+            for i in range(11):
+                col1, col2, col3 = st.columns([1, 2, 3])
+                
+                with col1:
+                    st.write(f"**{i+1}**")
+                
+                with col2:
+                    ruolo = st.selectbox(
+                        f"Ruolo {i+1}",
+                        options=ruoli,
+                        key=f"ruolo_{tipo_squadra}_{i}",
+                        label_visibility="collapsed"
                     )
                 
-                st.success(f"✅ Formazione {nome_squadra} salvata!")
-                st.rerun()
+                with col3:
+                    nome = st.text_input(
+                        f"Nome {i+1}",
+                        placeholder=f"Nome giocatore {i+1}",
+                        key=f"nome_{tipo_squadra}_{i}",
+                        label_visibility="collapsed"
+                    )
+                
+                giocatori.append({'ruolo': ruolo, 'nome': nome, 'posizione': i+1})
+            
+            submitted = st.form_submit_button("✅ Salva Formazione", type="primary")
+            
+            if submitted:
+                # Verifica che tutti i nomi siano inseriti
+                nomi_validi = [g for g in giocatori if g['nome'].strip()]
+                
+                if len(nomi_validi) != 11:
+                    st.error("❌ Inserisci tutti gli 11 giocatori")
+                else:
+                    # Cancella formazione esistente
+                    db.clear_formazione(partita.id, tipo_squadra)
+                    
+                    # Inserisci nuova formazione
+                    for g in giocatori:
+                        db.add_formazione(
+                            partita.id,
+                            tipo_squadra,
+                            g['nome'].strip(),
+                            g['ruolo'],
+                            g['posizione']
+                        )
+                    
+                    st.success(f"✅ Formazione {nome_squadra} salvata!")
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+
+
+def parse_formazione_da_testo(testo):
+    """
+    Parsa una formazione da testo incollato.
+    Supporta vari formati incluso NEW fantageneration.
+    
+    Returns:
+        List[dict] con 'ruolo' e 'nome', oppure None se parsing fallisce
+    """
+    import re
+    
+    if not testo or not testo.strip():
+        return None
+    
+    # FORMATO NEW FANTAGENERATION
+    # Cerca pattern: (P) Nome, (D) Nome, (C) Nome, (A) Nome
+    # Esempio: "(P) Sommer(D) Bastoni(D) Cambiaso..."
+    pattern_fantageneration = r'\(([PDCA])\)\s*([^(]+?)(?=\([PDCA]\)|$)'
+    matches = re.findall(pattern_fantageneration, testo, re.IGNORECASE)
+    
+    if matches and len(matches) >= 11:
+        giocatori = []
+        for ruolo, nome in matches[:11]:  # Prendi solo i primi 11
+            nome_pulito = nome.strip()
+            # Rimuovi eventuali numeri/statistiche alla fine
+            nome_pulito = re.sub(r'\d+\.?\d*\s*$', '', nome_pulito).strip()
+            if nome_pulito:
+                giocatori.append({
+                    'ruolo': ruolo.upper(),
+                    'nome': nome_pulito
+                })
+        
+        if len(giocatori) == 11:
+            return giocatori
+    
+    # FORMATO STANDARD: linee separate
+    linee = [l.strip() for l in testo.strip().split('\n') if l.strip()]
+    
+    # Filtra linee che sono header/info (contengono "giornata", "modulo", "gol", ecc.)
+    linee_filtrate = []
+    for linea in linee:
+        linea_lower = linea.lower()
+        # Skippa header e info match
+        if any(keyword in linea_lower for keyword in 
+               ['giornata', 'modulo', 'gol -', 'bundesliga', 'serie a', 
+                'giocatore', 'voto', 'team', ' : ', 'formazione']):
+            continue
+        linee_filtrate.append(linea)
+    
+    giocatori = []
+    
+    for linea in linee_filtrate:
+        # Formato: "P Nome Cognome" o "P: Nome Cognome"
+        match = re.match(r'^([PDCA])[:\s]+(.+)$', linea, re.IGNORECASE)
+        if match:
+            ruolo = match.group(1).upper()
+            nome = match.group(2).strip()
+            giocatori.append({'ruolo': ruolo, 'nome': nome})
+            continue
+        
+        # Formato: "Nome Cognome (P)" o "Nome Cognome - P"
+        match = re.match(r'^(.+?)[\s\-]+\(?([PDCA])\)?$', linea, re.IGNORECASE)
+        if match:
+            nome = match.group(1).strip()
+            ruolo = match.group(2).upper()
+            giocatori.append({'ruolo': ruolo, 'nome': nome})
+            continue
+        
+        # Formato: "Portiere: Nome Cognome"
+        ruoli_map = {
+            'portiere': 'P', 'por': 'P',
+            'difensore': 'D', 'dif': 'D',
+            'centrocampista': 'C', 'centro': 'C', 'cen': 'C',
+            'attaccante': 'A', 'att': 'A'
+        }
+        for ruolo_text, ruolo_code in ruoli_map.items():
+            if linea.lower().startswith(ruolo_text):
+                nome = linea[len(ruolo_text):].strip(' :').strip()
+                if nome:
+                    giocatori.append({'ruolo': ruolo_code, 'nome': nome})
+                    break
+        else:
+            # Se non trova pattern, considera come nome semplice e prova a dedurre ruolo
+            # Per ora lo skippiamo o lo mettiamo come centrocampista di default
+            if linea and len(linea) > 2:
+                # Deduzione semplice: primo giocatore = P, ultimi 2 = A, resto = D o C
+                pos = len(giocatori)
+                if pos == 0:
+                    ruolo = 'P'
+                elif pos >= 9:  # Ultimi 2
+                    ruolo = 'A'
+                elif pos <= 4:  # Primi difensori
+                    ruolo = 'D'
+                else:
+                    ruolo = 'C'
+                giocatori.append({'ruolo': ruolo, 'nome': linea.strip()})
+    
+    return giocatori if giocatori else None
 
 
 def render_voti():
