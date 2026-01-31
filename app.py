@@ -815,7 +815,11 @@ def applica_voti_da_excel(partita_id, tipo_squadra, df_excel):
     # Crea dizionario nome -> dati
     voti_dict = {}
     for _, row in df_excel.iterrows():
-        nome = row['nome'].strip().lower()
+        # Salta righe con nome vuoto o NaN
+        if pd.isna(row.get('nome')) or not str(row.get('nome')).strip():
+            continue
+        
+        nome = str(row['nome']).strip().lower()
         voti_dict[nome] = row
     
     # Applica voti
