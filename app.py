@@ -374,25 +374,40 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
             key=f"paste_{tipo_squadra}"
         )
         
+        # Session state per gestire il workflow
+        preview_key = f"preview_{tipo_squadra}_{partita.id}"
+        if preview_key not in st.session_state:
+            st.session_state[preview_key] = None
+        
         if st.button("🔄 Elabora e Inserisci", type="primary", key=f"parse_{tipo_squadra}"):
             giocatori_parsed = parse_formazione_da_testo(testo_formazione)
             
             if giocatori_parsed is None:
                 st.error("❌ Formato non riconosciuto. Usa uno dei formati supportati.")
+                st.session_state[preview_key] = None
             elif len(giocatori_parsed) != 11:
                 st.error(f"❌ Trovati {len(giocatori_parsed)} giocatori, servono esattamente 11.")
+                st.session_state[preview_key] = None
             else:
-                # Mostra anteprima
-                st.write("**Anteprima formazione rilevata:**")
-                df_preview = pd.DataFrame(giocatori_parsed)
-                st.dataframe(df_preview, use_container_width=True, hide_index=True)
-                
-                if st.button("✅ Conferma e Salva", type="primary", key=f"confirm_{tipo_squadra}"):
+                # Salva in session state
+                st.session_state[preview_key] = giocatori_parsed
+                st.rerun()
+        
+        # Mostra anteprima se presente
+        if st.session_state[preview_key] is not None:
+            st.write("**Anteprima formazione rilevata:**")
+            df_preview = pd.DataFrame(st.session_state[preview_key])
+            st.dataframe(df_preview, use_container_width=True, hide_index=True)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Conferma e Salva", type="primary", key=f"confirm_{tipo_squadra}", use_container_width=True):
                     # Cancella formazione esistente
                     db.clear_formazione(partita.id, tipo_squadra)
                     
                     # Inserisci nuova formazione
-                    for i, g in enumerate(giocatori_parsed, 1):
+                    for i, g in enumerate(st.session_state[preview_key], 1):
                         db.add_formazione(
                             partita.id,
                             tipo_squadra,
@@ -402,8 +417,14 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
                         )
                     
                     st.success(f"✅ Formazione {nome_squadra} salvata!")
+                    # Pulisci session state
+                    st.session_state[preview_key] = None
                     time.sleep(1)
-                    time.sleep(1)
+                    st.rerun()
+            
+            with col2:
+                if st.button("❌ Annulla", key=f"cancel_{tipo_squadra}", use_container_width=True):
+                    st.session_state[preview_key] = None
                     st.rerun()
     
     else:  # Inserimento manuale
@@ -461,7 +482,6 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
                         )
                     
                     st.success(f"✅ Formazione {nome_squadra} salvata!")
-                    time.sleep(1)
                     time.sleep(1)
                     st.rerun()
 

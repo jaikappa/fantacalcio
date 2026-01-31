@@ -46,6 +46,7 @@ def parse_voto_excel(voto_str) -> tuple:
 def leggi_excel_voti(filepath: str) -> pd.DataFrame:
     """
     Legge un file Excel con i voti dei giocatori.
+    Supporta sia file standard che file Fantacalcio.it ufficiali.
     
     Colonne attese:
     - Ruolo (P, D, C, A)
@@ -67,8 +68,29 @@ def leggi_excel_voti(filepath: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame con i dati processati
     """
-    # Leggi il file Excel
+    
+    # Prova prima a leggere il file normalmente
     df = pd.read_excel(filepath)
+    
+    # Se la prima colonna contiene "Voti Fantacalcio" o header strani, è un file Fantacalcio.it
+    first_col_name = str(df.columns[0]).lower()
+    if 'voti fantacalcio' in first_col_name or 'unnamed' in first_col_name or df.iloc[0, 0] == 'Cod.':
+        # File Fantacalcio.it: cerca la riga con "Cod.", "Ruolo", "Nome"
+        df_raw = pd.read_excel(filepath, header=None)
+        
+        # Trova la riga header (quella con "Ruolo")
+        header_row = None
+        for i in range(min(10, len(df_raw))):
+            row_values = [str(v).lower() for v in df_raw.iloc[i].tolist() if pd.notna(v)]
+            if 'ruolo' in row_values and 'nome' in row_values:
+                header_row = i
+                break
+        
+        if header_row is not None:
+            # Rileggi usando quella riga come header
+            df = pd.read_excel(filepath, header=header_row)
+        else:
+            raise ValueError("Impossibile trovare l'header nel file Excel. Assicurati che contenga le colonne Ruolo, Nome, Voto.")
     
     # Normalizza i nomi delle colonne (rimuovi spazi, converti in minuscolo, rimuovi caratteri speciali)
     df.columns = df.columns.str.strip().str.lower().str.replace('[^a-z0-9]', '', regex=True)
