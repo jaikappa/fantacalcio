@@ -1,0 +1,836 @@
+"""
+Applicazione Streamlit per il Fantacalcio.
+Interfaccia web completa per gestire giornate, partite, formazioni e calcoli.
+"""
+
+import streamlit as st
+import pandas as pd
+from db import DatabaseManager, Formazione, Voto
+from calc import calcola_risultato_partita, calcola_bonus_malus_da_eventi
+from excel_import import importa_voti_excel, applica_voti_excel_a_formazione, esporta_template_excel
+import os
+
+# Configurazione pagina
+st.set_page_config(
+    page_title="Fantacalcio Manager",
+    page_icon="⚽",
+    layout="wide"
+)
+
+# Inizializza il database
+@st.cache_resource
+def get_db():
+    return DatabaseManager('fantacalcio.db')
+
+db = get_db()
+
+# Inizializza session state
+if 'page' not in st.session_state:
+    st.session_state.page = 'home'
+if 'selected_giornata' not in st.session_state:
+    st.session_state.selected_giornata = None
+if 'selected_partita' not in st.session_state:
+    st.session_state.selected_partita = None
+
+# ===== FUNZIONI DI UTILITÀ =====
+
+def render_menu():
+    """Renderizza il menu principale"""
+    st.sidebar.title("⚽ Fantacalcio Manager")
+    
+    menu_options = {
+        'home': '🏠 Home',
+        'giornate': '📅 Gestione Giornate',
+        'partite': '⚽ Gestione Partite',
+        'formazioni': '👥 Inserimento Formazioni',
+        'voti': '📝 Inserimento Voti',
+        'excel': '📊 Import da Excel',
+        'calcolo': '🧮 Calcolo Risultati'
+    }
+    
+    for key, label in menu_options.items():
+        if st.sidebar.button(label, key=f"menu_{key}", use_container_width=True):
+            st.session_state.page = key
+            st.rerun()
+    
+    st.sidebar.divider()
+    st.sidebar.info("Webapp Fantacalcio v1.0")
+
+
+def render_home():
+    """Pagina home con panoramica"""
+    st.title("🏠 Fantacalcio Manager")
+    st.write("Benvenuto nel sistema di gestione del Fantacalcio!")
+    
+    st.header("📊 Panoramica")
+    
+    giornate = db.get_all_giornate()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Giornate create", len(giornate))
+    
+    with col2:
+        totale_partite = sum(len(g.partite) for g in giornate)
+        st.metric("Partite totali", totale_partite)
+    
+    with col3:
+        st.metric("Database", "✅ Connesso")
+    
+    st.divider()
+    
+    st.subheader("🚀 Per iniziare:")
+    st.write("1. Crea una nuova giornata dalla sezione 'Gestione Giornate'")
+    st.write("2. Aggiungi una partita alla giornata")
+    st.write("3. Inserisci le formazioni delle due squadre")
+    st.write("4. Importa i voti da Excel o inseriscili manualmente")
+    st.write("5. Calcola il risultato della partita")
+    
+    if giornate:
+        st.divider()
+        st.subheader("📅 Ultime giornate")
+        
+        for g in giornate[-5:]:
+            with st.expander(f"Giornata {g.numero}: {g.descrizione}"):
+                st.write(f"Partite: {len(g.partite)}")
+                for p in g.partite:
+                    st.write(f"• {p.squadra_casa} vs {p.squadra_trasferta}")
+
+
+def render_giornate():
+    """Pagina gestione giornate"""
+    st.title("📅 Gestione Giornate")
+    
+    tab1, tab2 = st.tabs(["Crea Nuova Giornata", "Giornate Esistenti"])
+    
+    with tab1:
+        st.subheader("Crea una nuova giornata")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            numero = st.number_input("Numero giornata", min_value=1, step=1, value=1)
+        
+        with col2:
+            descrizione = st.text_input("Descrizione (opzionale)", placeholder="Es: Giornata di andata")
+        
+        if st.button("✅ Crea Giornata", type="primary"):
+            try:
+                giornata = db.create_giornata(numero, descrizione)
+                st.success(f"✅ Giornata {numero} creata con successo!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Errore: {str(e)}")
+    
+    with tab2:
+        st.subheader("Giornate esistenti")
+        
+        giornate = db.get_all_giornate()
+        
+        if not giornate:
+            st.info("Nessuna giornata creata. Crea la prima giornata dalla tab precedente.")
+        else:
+            for giornata in giornate:
+                with st.expander(f"🗓️ Giornata {giornata.numero}: {giornata.descrizione}"):
+                    col1, col2, col3 = st.columns([2, 2, 1])
+                    
+                    with col1:
+                        st.write(f"**Partite:** {len(giornata.partite)}")
+                    
+                    with col2:
+                        st.write(f"**Creata il:** {giornata.data_creazione.strftime('%d/%m/%Y')}")
+                    
+                    with col3:
+                        if st.button("🗑️ Elimina", key=f"del_giornata_{giornata.id}"):
+                            if db.delete_giornata(giornata.id):
+                                st.success("Giornata eliminata!")
+                                st.rerun()
+                    
+                    if giornata.partite:
+                        st.write("**Partite:**")
+                        for p in giornata.partite:
+                            st.write(f"• {p.squadra_casa} vs {p.squadra_trasferta}")
+
+
+def render_partite():
+    """Pagina gestione partite"""
+    st.title("⚽ Gestione Partite")
+    
+    giornate = db.get_all_giornate()
+    
+    if not giornate:
+        st.warning("⚠️ Nessuna giornata disponibile. Crea prima una giornata.")
+        return
+    
+    tab1, tab2 = st.tabs(["Crea Nuova Partita", "Partite Esistenti"])
+    
+    with tab1:
+        st.subheader("Crea una nuova partita")
+        
+        # Seleziona giornata
+        giornata_options = {g.id: f"Giornata {g.numero}: {g.descrizione}" for g in giornate}
+        selected_giornata_id = st.selectbox(
+            "Seleziona giornata",
+            options=list(giornata_options.keys()),
+            format_func=lambda x: giornata_options[x]
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            squadra_casa = st.text_input("Squadra di Casa", placeholder="Es: Team A")
+        
+        with col2:
+            squadra_trasferta = st.text_input("Squadra in Trasferta", placeholder="Es: Team B")
+        
+        if st.button("✅ Crea Partita", type="primary"):
+            if not squadra_casa or not squadra_trasferta:
+                st.error("❌ Inserisci entrambe le squadre")
+            elif squadra_casa.strip().lower() == squadra_trasferta.strip().lower():
+                st.error("❌ Le squadre devono essere diverse")
+            else:
+                try:
+                    partita = db.create_partita(selected_giornata_id, squadra_casa, squadra_trasferta)
+                    st.success(f"✅ Partita creata: {squadra_casa} vs {squadra_trasferta}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Errore: {str(e)}")
+    
+    with tab2:
+        st.subheader("Partite esistenti")
+        
+        for giornata in giornate:
+            if giornata.partite:
+                st.write(f"### Giornata {giornata.numero}")
+                
+                for partita in giornata.partite:
+                    with st.expander(f"⚽ {partita.squadra_casa} vs {partita.squadra_trasferta}"):
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            # Mostra formazioni se presenti
+                            form_casa = db.get_formazione_partita(partita.id, 'casa')
+                            form_trasferta = db.get_formazione_partita(partita.id, 'trasferta')
+                            
+                            st.write(f"**{partita.squadra_casa} (Casa):** {len(form_casa)} giocatori")
+                            st.write(f"**{partita.squadra_trasferta} (Trasferta):** {len(form_trasferta)} giocatori")
+                        
+                        with col2:
+                            if st.button("🗑️ Elimina", key=f"del_partita_{partita.id}"):
+                                if db.delete_partita(partita.id):
+                                    st.success("Partita eliminata!")
+                                    st.rerun()
+
+
+def render_formazioni():
+    """Pagina inserimento formazioni"""
+    st.title("👥 Inserimento Formazioni")
+    
+    giornate = db.get_all_giornate()
+    
+    if not giornate:
+        st.warning("⚠️ Nessuna giornata disponibile.")
+        return
+    
+    # Seleziona giornata
+    giornata_options = {g.id: f"Giornata {g.numero}: {g.descrizione}" for g in giornate}
+    selected_giornata_id = st.selectbox(
+        "Seleziona giornata",
+        options=list(giornata_options.keys()),
+        format_func=lambda x: giornata_options[x],
+        key="form_giornata"
+    )
+    
+    partite = db.get_partite_giornata(selected_giornata_id)
+    
+    if not partite:
+        st.info("Nessuna partita in questa giornata. Crea prima una partita.")
+        return
+    
+    # Seleziona partita
+    partita_options = {p.id: f"{p.squadra_casa} vs {p.squadra_trasferta}" for p in partite}
+    selected_partita_id = st.selectbox(
+        "Seleziona partita",
+        options=list(partita_options.keys()),
+        format_func=lambda x: partita_options[x],
+        key="form_partita"
+    )
+    
+    partita = db.get_partita(selected_partita_id)
+    
+    st.divider()
+    
+    # Tab per le due squadre
+    tab_casa, tab_trasferta = st.tabs([f"🏠 {partita.squadra_casa}", f"✈️ {partita.squadra_trasferta}"])
+    
+    with tab_casa:
+        render_formazione_squadra(partita, 'casa', partita.squadra_casa)
+    
+    with tab_trasferta:
+        render_formazione_squadra(partita, 'trasferta', partita.squadra_trasferta)
+
+
+def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
+    """Renderizza il form per inserire la formazione di una squadra"""
+    st.subheader(f"Formazione {nome_squadra}")
+    
+    # Mostra formazione esistente
+    formazione_esistente = db.get_formazione_partita(partita.id, tipo_squadra)
+    
+    if formazione_esistente:
+        st.write("**Formazione attuale:**")
+        
+        df_form = pd.DataFrame([
+            {
+                'Pos': f.posizione,
+                'Ruolo': f.ruolo,
+                'Giocatore': f.giocatore
+            }
+            for f in formazione_esistente
+        ])
+        
+        st.dataframe(df_form, use_container_width=True, hide_index=True)
+        
+        if st.button(f"🗑️ Cancella formazione {nome_squadra}", key=f"clear_{tipo_squadra}"):
+            db.clear_formazione(partita.id, tipo_squadra)
+            st.success("Formazione cancellata!")
+            st.rerun()
+        
+        st.divider()
+    
+    # Form per inserire nuova formazione
+    st.write("**Inserisci nuova formazione (11 titolari):**")
+    
+    ruoli = ['P', 'D', 'C', 'A']
+    
+    with st.form(f"form_{tipo_squadra}"):
+        giocatori = []
+        
+        for i in range(11):
+            col1, col2, col3 = st.columns([1, 2, 3])
+            
+            with col1:
+                st.write(f"**{i+1}**")
+            
+            with col2:
+                ruolo = st.selectbox(
+                    f"Ruolo {i+1}",
+                    options=ruoli,
+                    key=f"ruolo_{tipo_squadra}_{i}",
+                    label_visibility="collapsed"
+                )
+            
+            with col3:
+                nome = st.text_input(
+                    f"Nome {i+1}",
+                    placeholder=f"Nome giocatore {i+1}",
+                    key=f"nome_{tipo_squadra}_{i}",
+                    label_visibility="collapsed"
+                )
+            
+            giocatori.append({'ruolo': ruolo, 'nome': nome, 'posizione': i+1})
+        
+        submitted = st.form_submit_button("✅ Salva Formazione", type="primary")
+        
+        if submitted:
+            # Verifica che tutti i nomi siano inseriti
+            nomi_validi = [g for g in giocatori if g['nome'].strip()]
+            
+            if len(nomi_validi) != 11:
+                st.error("❌ Inserisci tutti gli 11 giocatori")
+            else:
+                # Cancella formazione esistente
+                db.clear_formazione(partita.id, tipo_squadra)
+                
+                # Inserisci nuova formazione
+                for g in giocatori:
+                    db.add_formazione(
+                        partita.id,
+                        tipo_squadra,
+                        g['nome'].strip(),
+                        g['ruolo'],
+                        g['posizione']
+                    )
+                
+                st.success(f"✅ Formazione {nome_squadra} salvata!")
+                st.rerun()
+
+
+def render_voti():
+    """Pagina inserimento voti manuali"""
+    st.title("📝 Inserimento Voti")
+    
+    giornate = db.get_all_giornate()
+    
+    if not giornate:
+        st.warning("⚠️ Nessuna giornata disponibile.")
+        return
+    
+    # Seleziona giornata
+    giornata_options = {g.id: f"Giornata {g.numero}: {g.descrizione}" for g in giornate}
+    selected_giornata_id = st.selectbox(
+        "Seleziona giornata",
+        options=list(giornata_options.keys()),
+        format_func=lambda x: giornata_options[x],
+        key="voti_giornata"
+    )
+    
+    partite = db.get_partite_giornata(selected_giornata_id)
+    
+    if not partite:
+        st.info("Nessuna partita in questa giornata.")
+        return
+    
+    # Seleziona partita
+    partita_options = {p.id: f"{p.squadra_casa} vs {p.squadra_trasferta}" for p in partite}
+    selected_partita_id = st.selectbox(
+        "Seleziona partita",
+        options=list(partita_options.keys()),
+        format_func=lambda x: partita_options[x],
+        key="voti_partita"
+    )
+    
+    partita = db.get_partita(selected_partita_id)
+    
+    st.divider()
+    
+    # Tab per le due squadre
+    tab_casa, tab_trasferta = st.tabs([f"🏠 {partita.squadra_casa}", f"✈️ {partita.squadra_trasferta}"])
+    
+    with tab_casa:
+        render_voti_squadra(partita, 'casa', partita.squadra_casa)
+    
+    with tab_trasferta:
+        render_voti_squadra(partita, 'trasferta', partita.squadra_trasferta)
+
+
+def render_voti_squadra(partita, tipo_squadra, nome_squadra):
+    """Renderizza il form per inserire i voti di una squadra"""
+    st.subheader(f"Voti {nome_squadra}")
+    
+    formazione = db.get_formazione_partita(partita.id, tipo_squadra)
+    
+    if not formazione:
+        st.warning(f"⚠️ Nessuna formazione inserita per {nome_squadra}. Inserisci prima la formazione.")
+        return
+    
+    for giocatore in formazione:
+        with st.expander(f"{giocatore.posizione}. {giocatore.giocatore} ({giocatore.ruolo})"):
+            col1, col2 = st.columns(2)
+            
+            voto_attuale = giocatore.voto
+            
+            with col1:
+                voto_base = st.number_input(
+                    "Voto base",
+                    min_value=0.0,
+                    max_value=10.0,
+                    value=float(voto_attuale.voto_base) if voto_attuale else 6.0,
+                    step=0.5,
+                    key=f"voto_base_{giocatore.id}"
+                )
+            
+            with col2:
+                bonus_malus = st.number_input(
+                    "Bonus/Malus totale",
+                    min_value=-20.0,
+                    max_value=20.0,
+                    value=float(voto_attuale.bonus_malus_totale) if voto_attuale else 0.0,
+                    step=0.5,
+                    key=f"bonus_malus_{giocatore.id}"
+                )
+            
+            note = st.text_input(
+                "Note",
+                value=voto_attuale.note if voto_attuale else "",
+                placeholder="Es: SV",
+                key=f"note_{giocatore.id}"
+            )
+            
+            if st.button("💾 Salva voto", key=f"save_voto_{giocatore.id}"):
+                db.update_voto(
+                    giocatore.id,
+                    voto_base=voto_base,
+                    bonus_malus=bonus_malus,
+                    note=note,
+                    is_manual=True
+                )
+                st.success(f"✅ Voto salvato per {giocatore.giocatore}")
+                st.rerun()
+            
+            # Mostra voto totale
+            voto_totale = voto_base + bonus_malus
+            st.metric("Voto totale", f"{voto_totale:.1f}")
+
+
+def render_excel():
+    """Pagina import da Excel"""
+    st.title("📊 Import Voti da Excel")
+    
+    st.write("Carica un file Excel con i voti ufficiali per importarli automaticamente.")
+    
+    # Mostra formato richiesto
+    with st.expander("ℹ️ Formato file Excel richiesto"):
+        st.write("Il file Excel deve contenere le seguenti colonne:")
+        st.code("""
+Ruolo: P, D, C, A
+Nome: Nome del giocatore
+Voto: Voto base (può contenere asterisco per SV, es: 6*)
+Gf: Gol fatti
+Gs: Gol subiti
+Rp: Rigori parati
+Rf: Rigori fatti
+Rs: Rigori sbagliati
+Au: Autogol
+Amm: Ammonizioni
+Esp: Espulsioni
+Ass: Assist
+        """)
+        
+        st.write("**Download template:**")
+        if st.button("📥 Scarica template Excel"):
+            template_path = esporta_template_excel("template_voti.xlsx")
+            with open(template_path, 'rb') as f:
+                st.download_button(
+                    "⬇️ Download template",
+                    f,
+                    file_name="template_voti.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    
+    st.divider()
+    
+    # Upload file
+    uploaded_file = st.file_uploader("Carica file Excel", type=['xlsx', 'xls'])
+    
+    if uploaded_file:
+        # Salva il file temporaneamente
+        temp_path = f"/tmp/{uploaded_file.name}"
+        with open(temp_path, 'wb') as f:
+            f.write(uploaded_file.getbuffer())
+        
+        # Importa i voti
+        result = importa_voti_excel(temp_path)
+        
+        if result['success']:
+            st.success(f"✅ {result['message']}")
+            
+            # Mostra summary
+            summary = result['summary']
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Totale giocatori", summary['totale_giocatori'])
+            with col2:
+                st.metric("Con bonus", summary['giocatori_con_bonus'])
+            with col3:
+                st.metric("Con malus", summary['giocatori_con_malus'])
+            with col4:
+                st.metric("Senza voto (SV)", summary['giocatori_sv'])
+            
+            # Mostra dati importati
+            st.subheader("📋 Anteprima dati importati")
+            df = result['df']
+            
+            # Seleziona colonne da mostrare
+            cols_to_show = ['nome', 'ruolo', 'voto_base', 'bonus_malus_calcolato', 'voto_totale', 'nota']
+            st.dataframe(df[cols_to_show], use_container_width=True, hide_index=True)
+            
+            st.divider()
+            
+            # Applica a una partita
+            st.subheader("🎯 Applica voti a una partita")
+            
+            giornate = db.get_all_giornate()
+            
+            if giornate:
+                giornata_options = {g.id: f"Giornata {g.numero}: {g.descrizione}" for g in giornate}
+                selected_giornata_id = st.selectbox(
+                    "Seleziona giornata",
+                    options=list(giornata_options.keys()),
+                    format_func=lambda x: giornata_options[x],
+                    key="excel_giornata"
+                )
+                
+                partite = db.get_partite_giornata(selected_giornata_id)
+                
+                if partite:
+                    partita_options = {p.id: f"{p.squadra_casa} vs {p.squadra_trasferta}" for p in partite}
+                    selected_partita_id = st.selectbox(
+                        "Seleziona partita",
+                        options=list(partita_options.keys()),
+                        format_func=lambda x: partita_options[x],
+                        key="excel_partita"
+                    )
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("✅ Applica a Squadra Casa", type="primary"):
+                            applica_voti_da_excel(selected_partita_id, 'casa', df)
+                    
+                    with col2:
+                        if st.button("✅ Applica a Squadra Trasferta", type="primary"):
+                            applica_voti_da_excel(selected_partita_id, 'trasferta', df)
+        else:
+            st.error(f"❌ {result['message']}")
+
+
+def applica_voti_da_excel(partita_id, tipo_squadra, df_excel):
+    """Applica i voti da Excel a una formazione"""
+    partita = db.get_partita(partita_id)
+    formazione = db.get_formazione_partita(partita_id, tipo_squadra)
+    
+    if not formazione:
+        st.error("❌ Nessuna formazione trovata. Inserisci prima la formazione.")
+        return
+    
+    # Crea dizionario nome -> dati
+    voti_dict = {}
+    for _, row in df_excel.iterrows():
+        nome = row['nome'].strip().lower()
+        voti_dict[nome] = row
+    
+    # Applica voti
+    trovati = 0
+    non_trovati = []
+    
+    for giocatore in formazione:
+        nome_giocatore = giocatore.giocatore.strip().lower()
+        
+        if nome_giocatore in voti_dict:
+            row = voti_dict[nome_giocatore]
+            
+            # Calcola bonus/malus
+            bonus_malus = calcola_bonus_malus_da_eventi(
+                gol_fatti=int(row.get('gf', 0)),
+                gol_subiti=int(row.get('gs', 0)),
+                rigori_parati=int(row.get('rp', 0)),
+                rigori_fatti=int(row.get('rf', 0)),
+                rigori_sbagliati=int(row.get('rs', 0)),
+                autogol=int(row.get('au', 0)),
+                ammonizioni=int(row.get('amm', 0)),
+                espulsioni=int(row.get('esp', 0)),
+                assist=int(row.get('ass', 0)),
+                ruolo=giocatore.ruolo
+            )
+            
+            # Aggiorna voto
+            db.update_voto(
+                giocatore.id,
+                voto_base=float(row['voto_base']),
+                bonus_malus=bonus_malus,
+                gol_fatti=int(row.get('gf', 0)),
+                gol_subiti=int(row.get('gs', 0)),
+                rigori_parati=int(row.get('rp', 0)),
+                rigori_fatti=int(row.get('rf', 0)),
+                rigori_sbagliati=int(row.get('rs', 0)),
+                autogol=int(row.get('au', 0)),
+                ammonizioni=int(row.get('amm', 0)),
+                espulsioni=int(row.get('esp', 0)),
+                assist=int(row.get('ass', 0)),
+                note=row.get('nota', ''),
+                is_manual=False
+            )
+            
+            trovati += 1
+        else:
+            # Fallback: voto 6, bonus 0, nota SV
+            db.update_voto(
+                giocatore.id,
+                voto_base=6.0,
+                bonus_malus=0.0,
+                note='SV',
+                is_manual=False
+            )
+            non_trovati.append(giocatore.giocatore)
+    
+    nome_squadra = partita.squadra_casa if tipo_squadra == 'casa' else partita.squadra_trasferta
+    st.success(f"✅ Voti applicati a {nome_squadra}: {trovati} giocatori trovati")
+    
+    if non_trovati:
+        st.warning(f"⚠️ Giocatori non trovati (applicato fallback 6.0 SV): {', '.join(non_trovati)}")
+    
+    st.rerun()
+
+
+def render_calcolo():
+    """Pagina calcolo risultati"""
+    st.title("🧮 Calcolo Risultati")
+    
+    giornate = db.get_all_giornate()
+    
+    if not giornate:
+        st.warning("⚠️ Nessuna giornata disponibile.")
+        return
+    
+    # Seleziona giornata
+    giornata_options = {g.id: f"Giornata {g.numero}: {g.descrizione}" for g in giornate}
+    selected_giornata_id = st.selectbox(
+        "Seleziona giornata",
+        options=list(giornata_options.keys()),
+        format_func=lambda x: giornata_options[x],
+        key="calc_giornata"
+    )
+    
+    partite = db.get_partite_giornata(selected_giornata_id)
+    
+    if not partite:
+        st.info("Nessuna partita in questa giornata.")
+        return
+    
+    # Seleziona partita
+    partita_options = {p.id: f"{p.squadra_casa} vs {p.squadra_trasferta}" for p in partite}
+    selected_partita_id = st.selectbox(
+        "Seleziona partita",
+        options=list(partita_options.keys()),
+        format_func=lambda x: partita_options[x],
+        key="calc_partita"
+    )
+    
+    partita = db.get_partita(selected_partita_id)
+    
+    st.divider()
+    
+    if st.button("🧮 Calcola Risultato", type="primary", use_container_width=True):
+        calcola_e_mostra_risultato(partita)
+
+
+def calcola_e_mostra_risultato(partita):
+    """Calcola e mostra il risultato di una partita"""
+    
+    # Recupera formazioni
+    formazione_casa = db.get_formazione_partita(partita.id, 'casa')
+    formazione_trasferta = db.get_formazione_partita(partita.id, 'trasferta')
+    
+    if len(formazione_casa) != 11:
+        st.error(f"❌ Formazione casa incompleta: {len(formazione_casa)}/11 giocatori")
+        return
+    
+    if len(formazione_trasferta) != 11:
+        st.error(f"❌ Formazione trasferta incompleta: {len(formazione_trasferta)}/11 giocatori")
+        return
+    
+    # Prepara dati per il calcolo
+    def prepara_formazione(formazione):
+        return [
+            {
+                'nome': f.giocatore,
+                'ruolo': f.ruolo,
+                'voto_base': f.voto.voto_base if f.voto else 6.0,
+                'bonus_malus': f.voto.bonus_malus_totale if f.voto else 0.0,
+                'note': f.voto.note if f.voto else ''
+            }
+            for f in formazione
+        ]
+    
+    form_casa = prepara_formazione(formazione_casa)
+    form_trasferta = prepara_formazione(formazione_trasferta)
+    
+    # Calcola risultato
+    risultato = calcola_risultato_partita(form_casa, form_trasferta)
+    
+    # Mostra risultato
+    st.success("✅ Calcolo completato!")
+    
+    st.header("🏆 Risultato Finale")
+    
+    col1, col2, col3 = st.columns([2, 1, 2])
+    
+    with col1:
+        st.metric(partita.squadra_casa, risultato['casa']['gol'])
+    
+    with col2:
+        st.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
+    
+    with col3:
+        st.metric(partita.squadra_trasferta, risultato['trasferta']['gol'])
+    
+    st.divider()
+    
+    # Dettaglio squadre
+    col_casa, col_trasferta = st.columns(2)
+    
+    with col_casa:
+        st.subheader(f"🏠 {partita.squadra_casa}")
+        mostra_dettaglio_squadra(formazione_casa, risultato['casa'])
+    
+    with col_trasferta:
+        st.subheader(f"✈️ {partita.squadra_trasferta}")
+        mostra_dettaglio_squadra(formazione_trasferta, risultato['trasferta'])
+
+
+def mostra_dettaglio_squadra(formazione, risultato_squadra):
+    """Mostra il dettaglio dei calcoli per una squadra"""
+    
+    # Rosa giocatori
+    st.write("**Rosa titolare:**")
+    
+    data_giocatori = []
+    for f in formazione:
+        voto_base = f.voto.voto_base if f.voto else 6.0
+        bonus_malus = f.voto.bonus_malus_totale if f.voto else 0.0
+        voto_totale = voto_base + bonus_malus
+        nota = f.voto.note if f.voto else ''
+        
+        data_giocatori.append({
+            'Ruolo': f.ruolo,
+            'Giocatore': f.giocatore,
+            'Voto': f"{voto_base:.1f}",
+            'Bonus/Malus': f"{bonus_malus:+.1f}" if bonus_malus != 0 else "0",
+            'Totale': f"{voto_totale:.1f}",
+            'Note': nota
+        })
+    
+    df_giocatori = pd.DataFrame(data_giocatori)
+    st.dataframe(df_giocatori, use_container_width=True, hide_index=True)
+    
+    st.divider()
+    
+    # Calcoli
+    st.write("**Riepilogo calcoli:**")
+    
+    st.metric("Voto squadra (somma 11 titolari)", f"{risultato_squadra['voto_squadra']:.2f}")
+    
+    st.write(f"**Modulo:** {risultato_squadra['num_difensori']}:{risultato_squadra['num_centrocampisti']}:{risultato_squadra['num_attaccanti']}")
+    
+    st.write("**Modificatori:**")
+    st.write(f"• Difesa generata: {risultato_squadra['modificatore_difesa_generato']:+.2f} (applicato all'avversario)")
+    st.write(f"• Difesa subita: {risultato_squadra['modificatore_difesa_subito']:+.2f}")
+    st.write(f"• Centrocampo: {risultato_squadra['modificatore_centrocampo']:+.2f}")
+    st.write(f"• Attacco: {risultato_squadra['modificatore_attacco']:+.2f}")
+    st.write(f"• Vantaggio casa: {risultato_squadra['vantaggio_casa']:+.2f}")
+    
+    st.divider()
+    
+    st.metric("🎯 Punteggio totale", f"{risultato_squadra['punteggio_totale']:.2f}")
+    st.metric("⚽ Gol segnati", risultato_squadra['gol'])
+
+
+# ===== ROUTING =====
+
+def main():
+    """Funzione principale dell'applicazione"""
+    
+    render_menu()
+    
+    # Routing
+    if st.session_state.page == 'home':
+        render_home()
+    elif st.session_state.page == 'giornate':
+        render_giornate()
+    elif st.session_state.page == 'partite':
+        render_partite()
+    elif st.session_state.page == 'formazioni':
+        render_formazioni()
+    elif st.session_state.page == 'voti':
+        render_voti()
+    elif st.session_state.page == 'excel':
+        render_excel()
+    elif st.session_state.page == 'calcolo':
+        render_calcolo()
+
+
+if __name__ == "__main__":
+    main()
