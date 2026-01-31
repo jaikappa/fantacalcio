@@ -5,6 +5,8 @@ Interfaccia web completa per gestire giornate, partite, formazioni e calcoli.
 
 import streamlit as st
 import pandas as pd
+import time
+import re
 from db import DatabaseManager, Formazione, Voto
 from calc import calcola_risultato_partita, calcola_bonus_malus_da_eventi
 from excel_import import importa_voti_excel, applica_voti_excel_a_formazione, esporta_template_excel
@@ -144,7 +146,6 @@ def render_giornate():
                 st.session_state.giornata_descrizione = ""
                 
                 # Piccolo delay per far vedere il messaggio
-                import time
                 time.sleep(1)
                 
                 st.rerun()
@@ -226,7 +227,6 @@ def render_partite():
                     try:
                         partita = db.create_partita(selected_giornata_id, squadra_casa, squadra_trasferta)
                         st.success(f"✅ Partita creata: {squadra_casa} vs {squadra_trasferta}! I campi sono stati resettati.")
-                        import time
                         time.sleep(1.5)
                         st.rerun()
                     except Exception as e:
@@ -402,7 +402,7 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
                         )
                     
                     st.success(f"✅ Formazione {nome_squadra} salvata!")
-                    import time
+                    time.sleep(1)
                     time.sleep(1)
                     st.rerun()
     
@@ -461,7 +461,7 @@ def render_formazione_squadra(partita, tipo_squadra, nome_squadra):
                         )
                     
                     st.success(f"✅ Formazione {nome_squadra} salvata!")
-                    import time
+                    time.sleep(1)
                     time.sleep(1)
                     st.rerun()
 
@@ -474,8 +474,6 @@ def parse_formazione_da_testo(testo):
     Returns:
         List[dict] con 'ruolo' e 'nome', oppure None se parsing fallisce
     """
-    import re
-    
     if not testo or not testo.strip():
         return None
     
