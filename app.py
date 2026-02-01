@@ -60,14 +60,22 @@ def render_menu():
     
     # Info versione con dettagli
     st.sidebar.caption("**Fantacalcio Manager**")
-    st.sidebar.caption("Versione: **1.2.1**")
+    st.sidebar.caption("Versione: **1.2.2**")
     st.sidebar.caption("Build: 2025-02-01")
     
     # Indicatore storage persistente
-    if os.path.exists('/mount/data'):
-        st.sidebar.success("💾 Dati salvati permanentemente")
+    # Rileva se siamo su Streamlit Cloud in vari modi
+    is_streamlit_cloud = (
+        os.path.exists('/mount/data') or 
+        os.environ.get('STREAMLIT_SHARING_MODE') or
+        'streamlit.app' in os.environ.get('HOSTNAME', '') or
+        os.path.exists('/home/appuser')
+    )
+    
+    if is_streamlit_cloud:
+        st.sidebar.success("💾 Streamlit Cloud")
     else:
-        st.sidebar.info("💻 Ambiente di sviluppo")
+        st.sidebar.info("💻 Locale")
 
 
 def render_home():
@@ -104,7 +112,7 @@ def render_home():
     
     # Info versione e features
     with st.expander("ℹ️ Info Versione e Features"):
-        st.write("**Versione:** 1.2.1")
+        st.write("**Versione:** 1.2.2")
         st.write("**Build:** 2025-02-01")
         st.write("")
         st.write("**Nuove funzionalità v1.2:**")
@@ -121,14 +129,21 @@ def render_home():
         st.write("")
         
         # Indicatore storage con spiegazione
-        if os.path.exists('/mount/data'):
-            st.success("💾 **PRODUZIONE: Dati Salvati Permanentemente**")
-            st.info(f"📍 Database: `/mount/data/fantacalcio.db`\n\n"
-                   f"I tuoi dati sono al sicuro e sopravvivono a riavvii e sleep dell'app.")
+        is_streamlit_cloud = (
+            os.path.exists('/mount/data') or 
+            os.environ.get('STREAMLIT_SHARING_MODE') or
+            'streamlit.app' in os.environ.get('HOSTNAME', '') or
+            os.path.exists('/home/appuser')
+        )
+        
+        if is_streamlit_cloud:
+            st.success("☁️ **STREAMLIT CLOUD: App Online**")
+            st.info(f"📍 I tuoi dati sono salvati nel database e persistono tra le sessioni.\n\n"
+                   f"💡 **Consiglio:** Fai backup periodici dalla sezione 'Backup/Restore' per maggiore sicurezza.")
         else:
-            st.info("💻 **SVILUPPO: Ambiente Locale**")
+            st.info("💻 **LOCALE: Sviluppo**")
             st.info(f"📍 Database: `{db.db_path}`\n\n"
-                   f"Stai usando l'app in locale. Su Streamlit Cloud i dati saranno salvati automaticamente in modo permanente.")
+                   f"Stai usando l'app sul tuo computer. I dati sono salvati localmente.")
     
     if giornate:
         st.divider()

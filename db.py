@@ -107,14 +107,28 @@ class DatabaseManager:
     def __init__(self, db_path='fantacalcio.db'):
         """
         Inizializza la connessione al database.
-        Su Streamlit Cloud usa directory persistente per evitare perdita dati.
+        Rileva automaticamente l'ambiente e salva nel percorso corretto.
         """
-        # Su Streamlit Cloud, usa directory persistente
-        if os.path.exists('/mount/data'):
-            # Directory persistente di Streamlit Cloud
-            db_path = f'/mount/data/{db_path}'
+        # Rileva se siamo su Streamlit Cloud
+        is_streamlit_cloud = (
+            os.path.exists('/mount/data') or
+            os.environ.get('STREAMLIT_SHARING_MODE') or
+            os.path.exists('/home/appuser')
+        )
+        
+        if is_streamlit_cloud:
+            # Streamlit Cloud: prova /mount/data, altrimenti fallback a home
+            if os.path.exists('/mount/data'):
+                db_path = f'/mount/data/{db_path}'
+            elif os.path.exists('/home/appuser'):
+                os.makedirs('/home/appuser/data', exist_ok=True)
+                db_path = f'/home/appuser/data/{db_path}'
+            else:
+                # Fallback: directory corrente
+                os.makedirs('data', exist_ok=True)
+                db_path = f'data/{db_path}'
         elif not db_path.startswith('/'):
-            # Locale: crea directory data se non esiste
+            # Locale: crea directory data
             os.makedirs('data', exist_ok=True)
             db_path = f'data/{db_path}'
         
