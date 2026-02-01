@@ -47,7 +47,8 @@ def render_menu():
         'formazioni': '👥 Inserimento Formazioni',
         'voti': '📝 Inserimento Voti',
         'excel': '📊 Import da Excel',
-        'calcolo': '🧮 Calcolo Risultati'
+        'calcolo': '🧮 Calcolo Risultati',
+        'backup': '💾 Backup/Restore'
     }
     
     for key, label in menu_options.items():
@@ -56,7 +57,7 @@ def render_menu():
             st.rerun()
     
     st.sidebar.divider()
-    st.sidebar.info("Webapp Fantacalcio v1.0")
+    st.sidebar.info("Webapp Fantacalcio v1.2")
 
 
 def render_home():
@@ -1038,6 +1039,119 @@ def mostra_dettaglio_squadra(formazione, risultato_squadra):
     st.metric("⚽ Gol segnati", risultato_squadra['gol'])
 
 
+def render_backup():
+    """Pagina gestione backup e restore"""
+    st.title("💾 Backup e Restore Database")
+    
+    st.info("""
+    **Importante:** Su Streamlit Cloud, il database viene salvato in una directory persistente.
+    Tuttavia, è consigliato fare backup periodici per sicurezza.
+    """)
+    
+    tab1, tab2, tab3 = st.tabs(["📥 Backup", "📤 Restore", "📄 Export JSON"])
+    
+    with tab1:
+        st.subheader("Crea Backup")
+        st.write("Crea una copia di sicurezza del database completo.")
+        
+        if st.button("💾 Crea Backup Ora", type="primary"):
+            try:
+                backup_path = db.backup_database()
+                st.success(f"✅ Backup creato con successo!")
+                st.info(f"Percorso: `{backup_path}`")
+                
+                # Offri download del backup
+                if os.path.exists(backup_path):
+                    with open(backup_path, 'rb') as f:
+                        st.download_button(
+                            label="⬇️ Scarica Backup",
+                            data=f,
+                            file_name=os.path.basename(backup_path),
+                            mime="application/octet-stream"
+                        )
+            except Exception as e:
+                st.error(f"❌ Errore durante il backup: {str(e)}")
+        
+        st.divider()
+        
+        # Lista backup esistenti
+        st.subheader("Backup Esistenti")
+        backup_dir = 'data/backups'
+        if os.path.exists(backup_dir):
+            backups = [f for f in os.listdir(backup_dir) if f.endswith('.db')]
+            if backups:
+                for backup in sorted(backups, reverse=True):
+                    backup_path = os.path.join(backup_dir, backup)
+                    size = os.path.getsize(backup_path) / 1024  # KB
+                    st.write(f"📁 `{backup}` ({size:.1f} KB)")
+            else:
+                st.info("Nessun backup trovato.")
+        else:
+            st.info("Nessun backup trovato.")
+    
+    with tab2:
+        st.subheader("Ripristina da Backup")
+        st.warning("⚠️ **Attenzione:** Il ripristino sovrascriverà tutti i dati attuali!")
+        
+        # Upload backup file
+        uploaded_file = st.file_uploader(
+            "Carica un file di backup (.db)",
+            type=['db'],
+            key="restore_upload"
+        )
+        
+        if uploaded_file is not None:
+            st.write(f"File caricato: `{uploaded_file.name}`")
+            st.write(f"Dimensione: {uploaded_file.size / 1024:.1f} KB")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Conferma Ripristino", type="primary"):
+                    try:
+                        # Salva il file caricato temporaneamente
+                        temp_backup = 'data/temp_restore.db'
+                        os.makedirs('data', exist_ok=True)
+                        with open(temp_backup, 'wb') as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        # Ripristina
+                        if db.restore_database(temp_backup):
+                            st.success("✅ Database ripristinato con successo!")
+                            st.info("Ricarica la pagina per vedere i dati ripristinati.")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("❌ Errore durante il ripristino.")
+                    except Exception as e:
+                        st.error(f"❌ Errore: {str(e)}")
+            
+            with col2:
+                if st.button("❌ Annulla"):
+                    st.rerun()
+    
+    with tab3:
+        st.subheader("Export JSON")
+        st.write("Esporta tutti i dati in formato JSON leggibile.")
+        
+        if st.button("📄 Esporta in JSON", type="primary"):
+            try:
+                json_path = db.export_to_json()
+                st.success(f"✅ Dati esportati in JSON!")
+                
+                # Offri download
+                if os.path.exists(json_path):
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        st.download_button(
+                            label="⬇️ Scarica JSON",
+                            data=f.read(),
+                            file_name="fantacalcio_export.json",
+                            mime="application/json"
+                        )
+            except Exception as e:
+                st.error(f"❌ Errore durante l'export: {str(e)}")
+
+
 # ===== ROUTING =====
 
 def main():
@@ -1060,6 +1174,8 @@ def main():
         render_excel()
     elif st.session_state.page == 'calcolo':
         render_calcolo()
+    elif st.session_state.page == 'backup':
+        render_backup()
 
 
 if __name__ == "__main__":

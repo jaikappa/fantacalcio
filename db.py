@@ -105,7 +105,19 @@ class DatabaseManager:
     """Gestisce le operazioni sul database"""
     
     def __init__(self, db_path='fantacalcio.db'):
-        """Inizializza la connessione al database"""
+        """
+        Inizializza la connessione al database.
+        Su Streamlit Cloud usa directory persistente per evitare perdita dati.
+        """
+        # Su Streamlit Cloud, usa directory persistente
+        if os.path.exists('/mount/data'):
+            # Directory persistente di Streamlit Cloud
+            db_path = f'/mount/data/{db_path}'
+        elif not db_path.startswith('/'):
+            # Locale: crea directory data se non esiste
+            os.makedirs('data', exist_ok=True)
+            db_path = f'data/{db_path}'
+        
         self.db_path = db_path
         self.engine = create_engine(f'sqlite:///{db_path}')
         Base.metadata.create_all(self.engine)
@@ -115,6 +127,126 @@ class DatabaseManager:
     def get_session(self):
         """Restituisce la sessione del database"""
         return self.session
+    
+    def backup_database(self, backup_path=None):
+        """
+        Crea un backup del database.
+        
+        Args:
+            backup_path: percorso dove salvare il backup (default: data/backup_YYYYMMDD_HHMMSS.db)
+        
+        Returns:
+            str: percorso del file di backup creato
+        """
+        import shutil
+        from datetime import datetime
+        
+        if backup_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            os.makedirs('data/backups', exist_ok=True)
+            backup_path = f'data/backups/fantacalcio_backup_{timestamp}.db'
+        
+        # Chiudi e riapri la connessione per assicurare flush
+        self.session.close()
+        
+        # Copia il file database
+        shutil.copy2(self.db_path, backup_path)
+        
+        # Riapri la sessione
+        Session = sessionmaker(bind=self.engine)
+        self.session = Session()
+        
+        return backup_path
+    
+    def restore_database(self, backup_path):
+        """
+        Ripristina il database da un backup.
+        
+        Args:
+            backup_path: percorso del file di backup
+        
+        Returns:
+            bool: True se il ripristino è riuscito
+        """
+        import shutil
+        
+        if not os.path.exists(backup_path):
+            return False
+        
+        # Chiudi la connessione
+        self.session.close()
+        self.engine.dispose()
+        
+        # Ripristina il database
+        shutil.copy2(backup_path, self.db_path)
+        
+        # Riapri la connessione
+        self.engine = create_engine(f'sqlite:///{self.db_path}')
+        Session = sessionmaker(bind=self.engine)
+        self.session = Session()
+        
+        return True
+    
+    def export_to_json(self, filepath='data/fantacalcio_export.json'):
+        """
+        Esporta tutto il database in formato JSON.
+        
+        Args:
+            filepath: percorso dove salvare il JSON
+        
+        Returns:
+            str: percorso del file esportato
+        """
+        import json
+        
+        export_data = {
+            'giornate': [],
+            'export_date': datetime.now().isoformat()
+        }
+        
+        # Esporta tutte le giornate con partite, formazioni e voti
+        giornate = self.get_all_giornate()
+        
+        for g in giornate:
+            giornata_data = {
+                'numero': g.numero,
+                'descrizione': g.descrizione,
+                'partite': []
+            }
+            
+            for p in g.partite:
+                partita_data = {
+                    'squadra_casa': p.squadra_casa,
+                    'squadra_trasferta': p.squadra_trasferta,
+                    'formazioni': {'casa': [], 'trasferta': []}
+                }
+                
+                for tipo in ['casa', 'trasferta']:
+                    formazioni = self.get_formazione_partita(p.id, tipo)
+                    for f in formazioni:
+                        voto = self.get_voto(f.id)
+                        form_data = {
+                            'giocatore': f.giocatore,
+                            'ruolo': f.ruolo,
+                            'posizione': f.posizione,
+                            'voto': {
+                                'voto_base': voto.voto_base if voto else None,
+                                'bonus_malus': voto.bonus_malus_totale if voto else None,
+                                'note': voto.note if voto else None
+                            } if voto else None
+                        }
+                        partita_data['formazioni'][tipo].append(form_data)
+                
+                giornata_data['partite'].append(partita_data)
+            
+            export_data['giornate'].append(giornata_data)
+        
+        # Salva in JSON
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        
+        return filepath
     
     def create_giornata(self, numero, descrizione=""):
         """Crea una nuova giornata"""
