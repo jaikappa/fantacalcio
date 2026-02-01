@@ -57,7 +57,17 @@ def render_menu():
             st.rerun()
     
     st.sidebar.divider()
-    st.sidebar.info("Webapp Fantacalcio v1.2")
+    
+    # Info versione con dettagli
+    st.sidebar.caption("**Fantacalcio Manager**")
+    st.sidebar.caption("Versione: **1.2.0**")
+    st.sidebar.caption("Build: 2025-02-01")
+    
+    # Indicatore storage persistente
+    if os.path.exists('/mount/data'):
+        st.sidebar.success("💾 Storage persistente attivo")
+    else:
+        st.sidebar.warning("⚠️ Storage locale")
 
 
 def render_home():
@@ -89,6 +99,34 @@ def render_home():
     st.write("3. Inserisci le formazioni delle due squadre")
     st.write("4. Importa i voti da Excel o inseriscili manualmente")
     st.write("5. Calcola il risultato della partita")
+    
+    st.divider()
+    
+    # Info versione e features
+    with st.expander("ℹ️ Info Versione e Features"):
+        st.write("**Versione:** 1.2.0")
+        st.write("**Build:** 2025-02-01")
+        st.write("")
+        st.write("**Nuove funzionalità v1.2.0:**")
+        st.write("- ✅ Storage persistente automatico")
+        st.write("- ✅ Sistema backup/restore completo")
+        st.write("- ✅ Export JSON dati")
+        st.write("- ✅ Database sopravvive a riavvii")
+        st.write("")
+        st.write("**Features v1.1.x:**")
+        st.write("- ✅ Import formazioni via copia/incolla")
+        st.write("- ✅ Supporto NEW fantageneration")
+        st.write("- ✅ Import Excel Fantacalcio.it ufficiale")
+        st.write("- ✅ UX migliorata con feedback immediato")
+        st.write("")
+        
+        # Indicatore storage
+        if os.path.exists('/mount/data'):
+            st.success("💾 **Storage Persistente ATTIVO** - I tuoi dati sono al sicuro!")
+            st.info(f"Database salvato in: `/mount/data/fantacalcio.db`")
+        else:
+            st.warning("⚠️ **Storage Locale** - Consigliato fare backup periodici")
+            st.info(f"Database salvato in: `{db.db_path}`")
     
     if giornate:
         st.divider()
