@@ -60,14 +60,14 @@ def render_menu():
     
     # Info versione con dettagli
     st.sidebar.caption("**Fantacalcio Manager**")
-    st.sidebar.caption("Versione: **1.2.0**")
+    st.sidebar.caption("Versione: **1.2.1**")
     st.sidebar.caption("Build: 2025-02-01")
     
     # Indicatore storage persistente
     if os.path.exists('/mount/data'):
-        st.sidebar.success("💾 Storage persistente attivo")
+        st.sidebar.success("💾 Dati salvati permanentemente")
     else:
-        st.sidebar.warning("⚠️ Storage locale")
+        st.sidebar.info("💻 Ambiente di sviluppo")
 
 
 def render_home():
@@ -104,29 +104,31 @@ def render_home():
     
     # Info versione e features
     with st.expander("ℹ️ Info Versione e Features"):
-        st.write("**Versione:** 1.2.0")
+        st.write("**Versione:** 1.2.1")
         st.write("**Build:** 2025-02-01")
         st.write("")
-        st.write("**Nuove funzionalità v1.2.0:**")
-        st.write("- ✅ Storage persistente automatico")
+        st.write("**Nuove funzionalità v1.2:**")
+        st.write("- ✅ Database salvato permanentemente (no perdita dati)")
         st.write("- ✅ Sistema backup/restore completo")
-        st.write("- ✅ Export JSON dati")
-        st.write("- ✅ Database sopravvive a riavvii")
+        st.write("- ✅ Export JSON per archivio")
+        st.write("- ✅ Feedback migliorato applicazione voti")
         st.write("")
-        st.write("**Features v1.1.x:**")
+        st.write("**Features v1.1:**")
         st.write("- ✅ Import formazioni via copia/incolla")
         st.write("- ✅ Supporto NEW fantageneration")
         st.write("- ✅ Import Excel Fantacalcio.it ufficiale")
-        st.write("- ✅ UX migliorata con feedback immediato")
+        st.write("- ✅ UX migliorata con reset automatico")
         st.write("")
         
-        # Indicatore storage
+        # Indicatore storage con spiegazione
         if os.path.exists('/mount/data'):
-            st.success("💾 **Storage Persistente ATTIVO** - I tuoi dati sono al sicuro!")
-            st.info(f"Database salvato in: `/mount/data/fantacalcio.db`")
+            st.success("💾 **PRODUZIONE: Dati Salvati Permanentemente**")
+            st.info(f"📍 Database: `/mount/data/fantacalcio.db`\n\n"
+                   f"I tuoi dati sono al sicuro e sopravvivono a riavvii e sleep dell'app.")
         else:
-            st.warning("⚠️ **Storage Locale** - Consigliato fare backup periodici")
-            st.info(f"Database salvato in: `{db.db_path}`")
+            st.info("💻 **SVILUPPO: Ambiente Locale**")
+            st.info(f"📍 Database: `{db.db_path}`\n\n"
+                   f"Stai usando l'app in locale. Su Streamlit Cloud i dati saranno salvati automaticamente in modo permanente.")
     
     if giornate:
         st.divider()
@@ -916,11 +918,22 @@ def applica_voti_da_excel(partita_id, tipo_squadra, df_excel):
             non_trovati.append(giocatore.giocatore)
     
     nome_squadra = partita.squadra_casa if tipo_squadra == 'casa' else partita.squadra_trasferta
-    st.success(f"✅ Voti applicati a {nome_squadra}: {trovati} giocatori trovati")
+    
+    # Messaggio di successo dettagliato
+    if trovati == len(formazione):
+        # Tutti i giocatori trovati
+        st.success(f"✅ **Voti applicati con successo a {nome_squadra}!**")
+        st.info(f"📊 Tutti i {trovati} giocatori trovati nell'Excel e aggiornati correttamente.")
+    else:
+        # Alcuni giocatori non trovati
+        st.success(f"✅ **Voti applicati a {nome_squadra}**")
+        st.info(f"📊 {trovati}/{len(formazione)} giocatori trovati nell'Excel")
     
     if non_trovati:
-        st.warning(f"⚠️ Giocatori non trovati (applicato fallback 6.0 SV): {', '.join(non_trovati)}")
+        st.warning(f"⚠️ **Giocatori non trovati nell'Excel** (applicato voto 6.0 con nota SV):\n\n{', '.join(non_trovati)}")
     
+    # Delay per mostrare i messaggi prima del rerun
+    time.sleep(2)
     st.rerun()
 
 

@@ -224,7 +224,8 @@ class DatabaseManager:
                 for tipo in ['casa', 'trasferta']:
                     formazioni = self.get_formazione_partita(p.id, tipo)
                     for f in formazioni:
-                        voto = self.get_voto(f.id)
+                        # Usa la relazione diretta invece di get_voto
+                        voto = f.voto
                         form_data = {
                             'giocatore': f.giocatore,
                             'ruolo': f.ruolo,
